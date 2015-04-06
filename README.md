@@ -1,2 +1,2 @@
 # DataBusinessService
-Bestpractice for DAO - DAL - BLL
+Bestpractice for DAL and BLL
