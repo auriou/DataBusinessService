@@ -1,0 +1,135 @@
+﻿<#@ template language="C#" hostSpecific="true" debug="true" #>
+<#@ output extension="/" #>
+<#@ include file="$(SolutionDir)\.libs\EnvDTE.ttinclude" #>
+<#
+	Project project = FindProjectHost();
+
+
+	foreach (ProjectItem projectItem in GetProjectItems(project))
+	{
+        try{
+		var classes = GetClassesByInterface(projectItem, "IDtoGen").ToList();
+		//var classes = GetClassesByAttribute(projectItem, "AutoProperty");
+
+		foreach (CodeClass clazz in classes)
+		{
+			var use = "using System.ComponentModel;" + Environment.NewLine + "using System.Collections.Generic;" +  Environment.NewLine;
+			var usingString = GetStringUsings(projectItem);
+			AddText(use + usingString);
+			GenerateClass(clazz);
+			SaveOutputInTemplate(projectItem, "Dto.Gen.cs");
+			//SaveOutputInItem(projectItem, "Dto.Gen.cs");
+			//SaveOutputInProject(projectItem,"Dto","Dto.Gen.cs");
+
+		}
+        }
+        catch(Exception ex)
+        {
+            continue;
+        }
+	}
+#><#+
+
+	private void AddText(string texte)
+	{
+		#><#=texte#><#+
+	}
+	private void GenerateClass(CodeClass clazz)
+	{
+		var classNamespace = clazz.Namespace.Name;
+		var className = clazz.Name; //GetStringAfterLastDot(clazz.FullName);
+
+        var regSameNamespace = new Regex(classNamespace + @".\w+");
+
+#>namespace <#= classNamespace #>
+{
+	public partial class <#= className #>Dto : INotifyPropertyChanged  
+	{
+		#region private
+	<#+
+		//PushIndent("\t");
+		IEnumerable<CodeElement> elements = Members(clazz);
+		foreach (CodeElement element in elements)
+		{
+			var prop = element as CodeProperty;
+			var type = prop.Type.AsString;
+            type = regSameNamespace.Replace(type, p => p.Value + "Dto");
+			var namePublic = prop.Name;
+			var namePrivate = "_" + namePublic.First().ToString().ToLower() + namePublic.Substring(1);
+			#>
+		private <#=type#> <#=namePrivate#>;
+<#+
+		}
+
+		#>
+		#endregion
+
+		#region public
+<#+
+		foreach (CodeElement element in elements)
+		{
+			var prop = element as CodeProperty;
+			var type = prop.Type.AsString;
+            type = regSameNamespace.Replace(type, p => p.Value + "Dto");
+			var namePublic = prop.Name;
+			var namePrivate = "_" + namePublic.First().ToString().ToLower() + namePublic.Substring(1);
+			
+			#>
+		public <#=type #> <#=namePublic #>
+		{
+			get { return <#= namePrivate #>; }
+			set
+			{
+				if (Equals(<#= namePrivate #>, value)) return;
+				<#= namePrivate #> = value;
+				OnPropertyChanged("<#= namePublic #>");
+			}
+		}
+<#+
+		}
+#>
+		#endregion
+
+	    public static void InitializeMapper()
+	    {
+            AutoMapper.Mapper.CreateMap<<#= className #>, <#= className #>Dto>();
+            AutoMapper.Mapper.CreateMap<<#= className #>Dto, <#= className #>>();
+        }
+
+		#region INotifyPropertyChanged
+		public event PropertyChangedEventHandler PropertyChanged;
+		protected virtual void OnPropertyChanged(string propertyName)
+		{
+			var handler = PropertyChanged;
+			if (handler != null) handler(this, new PropertyChangedEventArgs(propertyName));
+		}
+		#endregion		
+	}
+
+    public static class <#= className #>Extension
+    {
+        public static IEnumerable<<#= className #>Dto> ToDtos(this IEnumerable<<#= className #>> obj<#= className #>s)
+        {
+            return obj<#= className #>s.MapToList<<#= className #>Dto>();
+        }
+        public static <#= className #>Dto ToDto(this <#= className #> obj<#= className #>)
+        {
+            return obj<#= className #>.MapTo<<#= className #>Dto>();
+        }
+
+        public static IEnumerable<<#= className #>> ToDbs(this IEnumerable<<#= className #>Dto> dto<#= className #>s)
+        {
+            return dto<#= className #>s.MapToList<<#= className #>>();
+        }
+        public static <#= className #> ToDb(this <#= className #>Dto dto<#= className #>)
+        {
+            return dto<#= className #>.MapTo<<#= className #>>();
+        }
+    }
+    public interface I<#= className #>Service
+    {
+    }
+}
+<#+
+	}
+#>

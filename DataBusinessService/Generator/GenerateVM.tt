@@ -1,0 +1,105 @@
+﻿<#@ template language="C#" hostSpecific="true" debug="true" #>
+<#@ output extension="/" #>
+<#@ include file="EnvDTE.ttinclude" #>
+<#
+    Project project = FindProjectHost();
+
+
+    foreach (ProjectItem projectItem in GetProjectItems(project))
+    {
+        //var classes = GetClassesByInterface(projectItem, "ITest");
+        var classes = GetClassesByAttribute(projectItem, "AutoProperty");
+
+        foreach (CodeClass clazz in classes)
+        {
+
+            var usingString = GetStringUsings(projectItem);
+            AddText(usingString);
+            GenerateClass(clazz);
+            //SaveOutputInTemplate(projectItem, "Dto.Gen.cs");
+            SaveOutputInItem(projectItem, "Dto.Gen.cs");
+
+        }
+    }
+#><#+
+
+    private void AddText(string texte)
+    {
+        #><#=texte#><#+
+    }
+    private void GenerateClass(CodeClass clazz)
+    {
+        var classNamespace = clazz.Namespace.Name;
+        var className = clazz.Name; //GetStringAfterLastDot(clazz.FullName);
+
+#>namespace <#= classNamespace #>
+{
+	public partial class <#= className #>  
+	{
+		#region AutoProperty
+	<#+
+        IEnumerable<CodeAttribute> attributes = Attributes(clazz).Where(at => at.Name == "AutoProperty");
+        foreach (CodeAttribute attribute in attributes)
+        {
+            var regex = new Regex(@"\.*\" + '"' + @"(?<Name>\w+)\" + '"' + @"[,\s]*typeof\((?<Type>[^\)]+)\)");
+            var match = regex.Match(attribute.Value);
+
+            if (match.Success)
+            {
+                var namePublic = match.Groups["Name"].Value;
+                namePublic = namePublic.First().ToString().ToUpper() + namePublic.Substring(1);
+				var namePrivate = "_" + namePublic.First().ToString().ToLower() + namePublic.Substring(1);
+
+
+                var type = match.Groups["Type"].Value;
+#>	private <#=type#> <#=namePrivate#>;
+		partial void On<#=namePublic#>Changed(<#=type#> value);
+		public <#= type #> <#= namePublic #>
+		{
+			get { return <#= namePrivate #>; }
+			set
+			{
+				if (Equals(<#= namePrivate #>, value)) return;
+				<#= namePrivate #> = value;
+				On<#= namePublic #>Changed(value);
+				OnPropertyChanged("<#= namePublic #>");
+			}
+		}
+	<#+
+            }
+        }
+#>
+	#endregion
+
+		#region AutoCommand
+<#+
+        IEnumerable<CodeAttribute> attributes2 = Attributes(clazz).Where(at => at.Name == "AutoCommand");
+        var initCommand = "";
+        foreach (CodeAttribute attribute in attributes2)
+        {
+            var regex = new Regex(@"\.*\" + '"' + @"(?<Name>\w+)\" + '"' + @"\.*");
+            var match = regex.Match(attribute.Value);
+
+            if (match.Success)
+            {
+                var namePublic = match.Groups["Name"].Value;
+
+#>		public ICommand <#= namePublic #>Command { get; private set; }
+		partial void Command<#= namePublic #>();
+<#+		initCommand += "\t\t\t" + namePublic + "Command = Command(Command" + namePublic + ");" + System.Environment.NewLine;
+            }
+}
+        if (!string.IsNullOrEmpty(initCommand))
+        {
+#>		protected override void OnPartialLoaded()
+		{
+<#= initCommand #>
+		}
+<#+  
+        }
+#>		#endregion
+	}
+}
+<#+
+    }
+#>

@@ -1,0 +1,442 @@
+﻿<#@ template hostspecific="true" #>
+<#@ output extension="/" #>
+<#@ assembly name="EnvDTE" #>
+<#@ import namespace="Microsoft.VisualStudio" #>
+<#@ import namespace="System.Text.RegularExpressions" #>
+<#@ import Namespace="EnvDTE" #>
+<#@ import namespace="System.Linq" #>
+<#@ assembly name="System.Core" #>
+<#@ assembly name="System.Xml" #>
+<#@ assembly name="System.Xml.Linq" #>
+<#@ import namespace="System.IO" #>
+<#@ import namespace="System.Reflection" #>
+<#@ import namespace="System.Xml" #>
+<#@ import namespace="System.Xml.Linq" #>
+<#@ import namespace="System.Xml.Xsl" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ assembly name="Microsoft.VisualStudio.OLE.Interop" #>
+<#@ assembly name="Microsoft.VisualStudio.Shell" #>
+<#@ assembly name="Microsoft.VisualStudio.Shell.Interop" #>
+<#@ assembly name="Microsoft.VisualStudio.Shell.Interop.8.0" #>
+<#@ import namespace="System.Diagnostics" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="Microsoft.VisualStudio.Shell" #>
+<#@ import namespace="Microsoft.VisualStudio.Shell.Interop" #>
+<#@ import namespace="Microsoft.VisualStudio.TextTemplating" #>
+<#+
+/*
+    */
+    public string Includes { get; set; }
+
+    public void SaveOutputInItem(ProjectItem projectItem, string sufixFile)
+    {
+        var outputFilePathInFileItem = GetStringBeforeLastDot(projectItem.FileNames[0]) + sufixFile;
+        File.WriteAllText(outputFilePathInFileItem, GenerationEnvironment.ToString());
+        projectItem.ProjectItems.AddFromFile(outputFilePathInFileItem);
+        GenerationEnvironment.Remove(0, GenerationEnvironment.Length);
+    }
+
+    public void SaveOutputInProject(ProjectItem projectItem, string relativeDirectoryPath, string sufixFile )
+    {
+        //test non fonctionnel
+        var project = projectItem.ContainingProject;
+        var dirProject = Directory.GetParent(project.FileName).FullName;
+        var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(projectItem.FileNames[0]);
+        var filePath = Path.Combine(dirProject, relativeDirectoryPath, fileNameWithoutExtension + sufixFile);
+        project.ProjectItems.AddFromFile(filePath); // il faut que le item existe !!! erreur
+     
+        GenerationEnvironment.Remove(0, GenerationEnvironment.Length);
+    }
+
+    public void SaveOutputInTemplate(ProjectItem projectItem, string sufixFile)
+    {
+        var outputFilePathInFileItem = GetStringBeforeLastDot(projectItem.FileNames[0]) + sufixFile;
+        var fileName = Path.GetFileName(outputFilePathInFileItem);
+        SaveOutput(fileName);
+    }
+
+    public void SaveOutput(string outputFileName, Project project)
+    {
+        // write all of the generated output to a file
+        string templateDirectory = Path.GetDirectoryName(Host.TemplateFile);
+        string outputFilePath = Path.Combine(templateDirectory, outputFileName);
+        File.WriteAllText(outputFilePath, GenerationEnvironment.ToString());
+
+        // clear the generated output
+        GenerationEnvironment.Remove(0, GenerationEnvironment.Length);
+
+        // add to the project
+        project.ProjectItems.AddFromFile(outputFilePath);
+    }
+    public Project FindProjectHost()
+    {
+    /* 
+        Thanks to Oleg Sych and T4 Toolbox for demonstrating how to derive the host. 
+
+        This template will work in vs2010rc - Change Microsoft.VisualStudio.TextTemplating.ITextTemplatingEngineHost to Microsoft.VisualStudio.TextTemplating.Interfaces.ITextTemplatingEngineHost below to get the template to work in the VS2008 or VS2010b2
+    */
+
+        Type transformationType = GetType();
+        PropertyInfo hostProperty = transformationType.GetProperty("Host");
+        if (hostProperty == null)
+        {
+            throw new Exception("Unable to retrieve templating engine host. " 
+                + "Ensure that the template includes hostspecific=\"True\" "
+                + "parameter in the #@ template # directive.");
+        }
+
+        var host 
+            = (ITextTemplatingEngineHost)hostProperty.GetValue(this, null);
+
+        var hostServiceProvider = (IServiceProvider)host;
+        var dte = (DTE)hostServiceProvider.GetService(typeof(DTE));
+        ProjectItem containingProjectItem = dte.Solution.FindProjectItem(host.TemplateFile);
+        Project project = containingProjectItem.ContainingProject;
+        return project;
+    }
+
+    private string GetStringAfterLastDot(string chaine)
+    {
+        string last = chaine.Split('.').Last();
+        return last;
+    }
+
+    private string GetStringBeforeLastDot(string chaine)
+    {
+        int lastDot = chaine.LastIndexOf(@".", System.StringComparison.Ordinal);
+        string filePath = chaine.Substring(0, lastDot);
+        return filePath;
+    }
+
+
+
+
+    private string GetClassVisiblityString(CodeClass clazz)
+    {
+        switch(clazz.Access)
+        {
+            case vsCMAccess.vsCMAccessPrivate:
+                return "private";
+            case vsCMAccess.vsCMAccessProtected:
+                return "protected";
+            case vsCMAccess.vsCMAccessProject:
+                return "internal";
+            default:
+                return "public";
+        }
+    }
+
+    /// <summary>
+    ///   Extracts the code that the given element represents
+    /// </summary>
+    public string GetElementText(CodeElement element)
+    {
+        TextPoint sp = element.GetStartPoint();
+        TextPoint ep = element.GetEndPoint();
+        EditPoint edit = sp.CreateEditPoint();
+        return edit.GetText(ep);
+    }
+
+    /// <summary>
+    ///   Enumerates the CodeAttributes of the given CodeClass
+    /// </summary>
+    public IEnumerable<CodeAttribute> Attributes(CodeClass codeClass)
+    {
+        foreach(CodeElement element in codeClass.Attributes)
+        {
+            yield return (CodeAttribute)element;
+        }
+    }
+
+    /// <summary>
+    ///   Enumerates the CodeAttributes of the given CodeClass
+    /// </summary>
+    public IEnumerable<CodeInterface> Interfaces(CodeClass codeClass)
+    {
+        foreach(CodeInterface element in codeClass.ImplementedInterfaces)
+        {
+            yield return element;
+        }
+    }
+
+    /// <summary>
+    ///   Enumerates the members of the given CodeClass
+    /// </summary>
+    public IEnumerable<CodeElement> Members(CodeClass codeClass)
+    {
+        foreach(CodeElement element in codeClass.Members)
+        {
+            yield return element;
+        }
+    }
+
+    /// <summary>
+    ///   Enumerates the ProjectItems of the given Project
+    /// </summary>
+    public IEnumerable<ProjectItem> GetProjectItems(Project project)
+    {
+        foreach(ProjectItem projectItem in project.ProjectItems)
+        {
+            yield return projectItem;
+            foreach(ProjectItem descendantItem in GetDescendantItems(projectItem))
+            {
+                yield return descendantItem;
+            }
+        }
+    }
+
+    /// <summary>
+    ///   Enumerates the descendant ProjectItems of the given ProjectItem
+    /// </summary>
+    public IEnumerable<ProjectItem> GetDescendantItems(ProjectItem projectItem)
+    {	
+        if (projectItem.ProjectItems != null)
+        {
+            foreach (ProjectItem childItem in projectItem.ProjectItems)
+            {
+                yield return childItem;
+
+                foreach(ProjectItem descendantItem in GetDescendantItems(childItem))
+                {
+                    yield return descendantItem;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    ///   Enumerates the CodeElements of the given ProjectItem
+    /// </summary>
+    public IEnumerable<CodeElement> GetCodeElements(ProjectItem projectItem)
+    {
+        FileCodeModel fileCodeModel = projectItem.FileCodeModel;
+            
+        if (fileCodeModel != null)
+        {
+            foreach (CodeElement codeElement in fileCodeModel.CodeElements)
+            {
+                foreach(CodeElement el in CodeElementDescendantsAndSelf(codeElement))
+                {
+                    yield return el;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    ///   Enumerates the descendant CodeElements of the given CodeElement
+    /// </summary>
+    public IEnumerable<CodeElement> CodeElementsDescendants(CodeElements codeElements)
+    {
+        foreach(CodeElement element in codeElements)
+        {
+            foreach (CodeElement descendant in CodeElementDescendantsAndSelf(element))
+            {
+                yield return descendant;			    
+            }
+        }
+    }
+
+    private IEnumerable<CodeElement> CodeElementDescendantsAndSelf(CodeElement codeElement)
+    {
+        yield return codeElement;
+    
+        CodeElements codeElements;
+            
+        switch(codeElement.Kind)
+        {		
+            /* namespaces */
+            case vsCMElement.vsCMElementNamespace:
+            {
+                var codeNamespace = (EnvDTE.CodeNamespace)codeElement;										
+                codeElements = codeNamespace.Members;
+                foreach(CodeElement descendant in CodeElementsDescendants(codeElements))
+                {
+                    yield return descendant;			    
+                }
+                break;
+            }
+        
+            /* Process classes */
+            case vsCMElement.vsCMElementClass:
+            {	        
+                var codeClass = (CodeClass)codeElement;			
+                codeElements = codeClass.Members;
+                foreach(CodeElement descendant in CodeElementsDescendants(codeElements))
+                {			    
+                    yield return descendant;			    
+                }	        
+                break;	
+            }
+        }
+    }
+
+    private IEnumerable<CodeClass> GetClassesByAttribute(ProjectItem projectItem, string findExistAttribut)
+    {
+        var classes = GetCodeElements(projectItem)
+            .Where(el => el.Kind == vsCMElement.vsCMElementClass)
+            .Cast<CodeClass>()
+            .Where(cl => Attributes(cl).Any(at => at.Name == findExistAttribut));
+        return classes;
+    }
+
+    private IEnumerable<CodeClass> GetClassesByInterface(ProjectItem projectItem, string findExistInterface)
+    {
+        var classes = GetCodeElements(projectItem)
+            .Where(el => el.Kind == vsCMElement.vsCMElementClass)
+            .Cast<CodeClass>()
+            .Where(cl => Interfaces(cl).Any(at => at.Name == findExistInterface));
+        return classes;
+    }
+
+    private string GetStringUsings(ProjectItem projectItem)
+    {
+        var aa = projectItem.Name;
+        var text = "";
+        var usings = GetCodeElements(projectItem)
+            .Where(el => el.Kind == vsCMElement.vsCMElementImportStmt);
+
+        var res = usings.ToList();
+
+        foreach (var col in res)
+        {
+            var finished = col.GetEndPoint();
+            text += col.StartPoint.CreateEditPoint().GetText(finished) + Environment.NewLine;
+        }
+        return text;
+    }
+
+    //multi output
+      List<string> __savedOutputs = new List<string>();
+    Engine __engine = new Engine();
+
+    void DeleteOldOutputs()
+    {
+        EnvDTE.ProjectItem templateProjectItem = __getTemplateProjectItem();
+        foreach (EnvDTE.ProjectItem childProjectItem in templateProjectItem.ProjectItems)
+        {
+            if (!__savedOutputs.Contains(childProjectItem.Name))
+                childProjectItem.Delete();
+        }
+    }
+
+    void ProcessTemplate(string templateFileName, string outputFileName)
+    {
+        string templateDirectory = Path.GetDirectoryName(Host.TemplateFile);
+        string outputFilePath = Path.Combine(templateDirectory, outputFileName);
+
+        string template = File.ReadAllText(Host.ResolvePath(templateFileName));
+        string output = __engine.ProcessTemplate(template, Host);
+        File.WriteAllText(outputFilePath, output);
+
+        EnvDTE.ProjectItem templateProjectItem = __getTemplateProjectItem();
+        templateProjectItem.ProjectItems.AddFromFile(outputFilePath);
+
+        __savedOutputs.Add(outputFileName);
+    }
+
+    void SaveOutput(string outputFileName)
+    {
+        string templateDirectory = Path.GetDirectoryName(Host.TemplateFile);
+        string outputFilePath = Path.Combine(templateDirectory, outputFileName);
+
+        File.WriteAllText(outputFilePath, this.GenerationEnvironment.ToString());
+        this.GenerationEnvironment = new StringBuilder();
+
+        EnvDTE.ProjectItem templateProjectItem = __getTemplateProjectItem();
+        templateProjectItem.ProjectItems.AddFromFile(outputFilePath);
+
+        //__savedOutputs.Add(outputFileName);
+    }
+
+    EnvDTE.ProjectItem __getTemplateProjectItem()
+    {
+        EnvDTE.Project dteProject = __getTemplateProject();
+
+        IVsProject vsProject = __dteProjectToVsProject(dteProject);
+
+        int iFound = 0;
+        uint itemId = 0;
+        VSDOCUMENTPRIORITY[] pdwPriority = new VSDOCUMENTPRIORITY[1];
+        int result = vsProject.IsDocumentInProject(Host.TemplateFile, out iFound, pdwPriority, out itemId);
+        if (result != VSConstants.S_OK)
+            throw new Exception("Unexpected error calling IVsProject.IsDocumentInProject");
+        if (iFound == 0)
+            throw new Exception("Cannot retrieve ProjectItem for template file");
+        if (itemId == 0)
+            throw new Exception("Cannot retrieve ProjectItem for template file");
+
+        Microsoft.VisualStudio.OLE.Interop.IServiceProvider itemContext = null;
+        result = vsProject.GetItemContext(itemId, out itemContext);
+        if (result != VSConstants.S_OK)
+            throw new Exception("Unexpected error calling IVsProject.GetItemContext");
+        if (itemContext == null)
+            throw new Exception("IVsProject.GetItemContext returned null");
+    
+        ServiceProvider itemContextService = new ServiceProvider(itemContext);
+        EnvDTE.ProjectItem templateItem = (EnvDTE.ProjectItem)itemContextService.GetService(typeof(EnvDTE.ProjectItem));
+        Debug.Assert(templateItem != null, "itemContextService.GetService returned null");
+
+        return templateItem;
+    }
+
+    EnvDTE.Project __getTemplateProject()
+    {
+        IServiceProvider hostServiceProvider = (IServiceProvider)Host;
+        if (hostServiceProvider == null)
+            throw new Exception("Host property returned unexpected value (null)");
+
+        EnvDTE.DTE dte = (EnvDTE.DTE)hostServiceProvider.GetService(typeof(EnvDTE.DTE));
+        if (dte == null)
+            throw new Exception("Unable to retrieve EnvDTE.DTE");
+
+        Array activeSolutionProjects = (Array)dte.ActiveSolutionProjects;
+        if (activeSolutionProjects == null)
+            throw new Exception("DTE.ActiveSolutionProjects returned null");
+
+        EnvDTE.Project dteProject = (EnvDTE.Project)activeSolutionProjects.GetValue(0);
+        if (dteProject == null)
+            throw new Exception("DTE.ActiveSolutionProjects[0] returned null");
+
+        return dteProject;
+    }
+
+    static IVsProject __dteProjectToVsProject(EnvDTE.Project project)
+    {
+        if (project == null) 
+            throw new ArgumentNullException("project");
+            
+        string projectGuid = null;        
+
+        // DTE does not expose the project GUID that exists at in the msbuild project file.        
+        // Cannot use MSBuild object model because it uses a static instance of the Engine,         
+        // and using the Project will cause it to be unloaded from the engine when the         
+        // GC collects the variable that we declare.       
+        using (XmlReader projectReader = XmlReader.Create(project.FileName))
+        {
+            projectReader.MoveToContent();
+            object nodeName = projectReader.NameTable.Add("ProjectGuid");
+            while (projectReader.Read())
+            {
+                if (Object.Equals(projectReader.LocalName, nodeName))
+                {
+                    projectGuid = (string)projectReader.ReadElementContentAsString(); 
+                    break;
+                }
+            }
+        }
+        if (string.IsNullOrEmpty(projectGuid))
+            throw new Exception("Unable to find ProjectGuid element in the project file");
+
+        Microsoft.VisualStudio.OLE.Interop.IServiceProvider dteServiceProvider = 
+            (Microsoft.VisualStudio.OLE.Interop.IServiceProvider)project.DTE;
+        IServiceProvider serviceProvider = new ServiceProvider(dteServiceProvider); 
+        IVsHierarchy vsHierarchy = VsShellUtilities.GetHierarchy(serviceProvider, new Guid(projectGuid));
+            
+        IVsProject vsProject = (IVsProject)vsHierarchy;
+        if (vsProject == null)
+            throw new ArgumentException("Project is not a VS project.");
+        return vsProject;
+    }
+
+#>
