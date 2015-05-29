@@ -66,11 +66,16 @@
     <Compile Include="UnitOfWorkTest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ModelContTest.cs" />
+    <Compile Include="UnitTest1.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\DataBusinessService\DataBusinessService.csproj">
       <Project>{c4d031a1-3a18-468b-a372-7e767b60772f}</Project>
       <Name>DataBusinessService</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\DataCache\DataCache.csproj">
+      <Project>{a6545944-ac73-4f9f-b903-1da5c589aacb}</Project>
+      <Name>DataCache</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>

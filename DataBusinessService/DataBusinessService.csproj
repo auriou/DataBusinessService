@@ -62,7 +62,6 @@
     <Compile Include="AutoMapExtensions.cs" />
     <Compile Include="Common\AutoCommandAsync.cs" />
     <Compile Include="Common\AutoProperty.cs" />
-    <Compile Include="Core\CacheRepositoryBase.cs" />
     <Compile Include="Generator\BlogDto.Gen.cs">
       <DependentUpon>GenerateDto.tt</DependentUpon>
     </Compile>
